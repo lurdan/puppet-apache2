@@ -1,0 +1,14 @@
+# = Overveiw
+#
+# apache2 module for Debian/Ubuntu environment
+#
+# target
+# - apache2 core service (MPM)
+# - apache2 module
+# - apache2 site-config (VirtualHost)
+#
+# TODO:
+# 
+# - SSL
+# - Authentication
+
