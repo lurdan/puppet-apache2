@@ -1,6 +1,6 @@
-# Class: apache
+# Class: apache2
 #
-# apache を管理するクラス。
+# This class controls apache2.
 #
 # Parameters:
 #
@@ -14,13 +14,34 @@
 #   apache2::site
 class apache2 ( $active = true, $mpm = 'worker' ) {
 
-  package { 'apache2':
-    ensure => installed,
+  $pkg_name = $::osfamily ? {
+    'Debian' => 'apache2',
+    'RedHat' => 'httpd',
   }
 
-  package { "apache2-mpm-${mpm}":
-    ensure => installed,
-    before => Package['apache2'],
+  package { 'apache2':
+    ensure => latest,
+    name => $pkg_name,
+  }
+
+  if $::osfamily ==  'Debian' {
+    package { "apache2-mpm-${mpm}":
+      ensure => latest,
+      before => Package['apache2'],
+    }
+    concat { '/etc/apache2/ports.conf':
+      require => Package['apache2'],
+      notify => Service['apache2'],
+    }
+
+    @apache2::namevhost {
+      'default':;
+    }
+
+    @apache2::listen {
+      '80':;
+      '443':;
+    }
   }
 
   file { '/var/www':
@@ -34,41 +55,57 @@ class apache2 ( $active = true, $mpm = 'worker' ) {
       true => running,
       default => stopped,
     },
+    name => $pkg_name,
     enable => $active,
     require => Package['apache2'],
   }
 
   exec { 'apache2-reloaded':
-    command => '/etc/init.d/apache2 reload',
+    command => "/etc/init.d/${pkg_name} reload",
     refreshonly => true,
     before => Service['apache2'],
   }
-
-  concat { '/etc/apache2/ports.conf':
-    require => Package['apache2'],
-    notify => Service['apache2'],
-  }
-
-  @apache2::namevhost {
-    'default':;
-    'default-ssl': port => '443';
-  }
-
-  @apache2::listen {
-    '80':;
-    '443':;
-  }
 }
 
-define apache2::conf ( $content = '', $ensure = 'present', $order = false ) {
-  if $order {
-    $filename = "${order}-${name}"
-  }
-  else {
-    $filename = "${name}"
+# Define: apache2::conf
+#
+# Creates separate config parts for apache2.
+#
+# Parameters:
+#   content:
+#   ensure:
+#   mode:
+#   owner:
+#   group:
+#   order:
+#
+# Requires:
+#
+# Sample Usage:
+#   apache2::conf { 'mysite.conf':
+#     content => template('mymod/vhost.conf.erb');
+#   }
+#
+define apache2::conf (
+  $content = '',
+  $ensure = 'present',
+  $mode = 640,
+  $owner = root,
+  $group = 0,
+  $order = false
+  ) {
+
+  $confdir = $::osfamily ? {
+    'Debian' => '/etc/apache2/conf.d',
+    'RedHat' => '/etc/httpd/conf.d',
   }
 
-  file { "/etc/apache2/conf.d/$filename":
+  $filename = $order ? {
+    false => "${name}",
+    default => "${order}-${name}"
+  }
+
+  file { "${confdir}/${filename}":
     ensure => $ensure,
     content => $content,
     require => Package['apache2'],
@@ -76,13 +113,15 @@ define apache2::conf ( $content = '', $ensure = 'present', $order = false ) {
   }
 }
 
-# Define: namevhost
+# Define: apache2::namevhost (Debian only)
 #
-# サイト毎の NameVirtualHost を定義する固有リソース。
-# モジュール内部で使用するヘルパー。
+# This resource represents Namevhost parameter for each site.
+# It's intended to be used inside this module.
 #
 # Parameters:
-#   priority を含めた (sites-enabled 配下の symlink と同じ) 名前で定義されることを想定している。
+#   Name
+#   ip
+#   port
 #
 # Actions:
 #
@@ -101,6 +140,17 @@ define apache2::namevhost( $ip = '*', $port = '80', $order = '10' ) {
   }
 }
 
+# Define: apache2::listen (Debian only)
+#
+# This resource represents Listen parameter.
+#
+# Parameters:
+#
+# Requires:
+#
+# Sample Usage:
+#   apache2::listen { '443':; }
+#
 define apache2::listen () {
   concat::fragment { "apache2-listen-${name}":
     target => '/etc/apache2/ports.conf',

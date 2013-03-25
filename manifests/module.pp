@@ -84,7 +84,7 @@ define apache2::module::config ($ensure = 'present', $config = false ) {
     }
     'absent': {
       exec { "/usr/sbin/a2dismod $name":
-        refreshonly => true,
+        onlyif => "/usr/bin/test -e /etc/apache2/mods-enabled/${name}.load";
       }
     }
   }
